@@ -1,0 +1,6 @@
+// ignore local builds of libraries
+lib/glfw/build/*
+lib/assimp/build/*
+
+// ignore generated files and binaries
+bin/*
