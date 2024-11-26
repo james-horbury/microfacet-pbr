@@ -15,15 +15,27 @@
 
 #include <iostream>
 
-// forward declarations
+// GLFW forward declarations
+void processInput(GLFWwindow *window);
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
-void processInput(GLFWwindow *window);
+
+// texture handling
+unsigned int loadTexture(const std::string& textureName, bool gammaCorrection);
+
+struct TextureInfo {
+  std::string name;
+  unsigned int id;
+};
+
+std::vector<TextureInfo> textures;
 
 // settings
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+bool gammaEnabled = false;
+bool gammaKeyPressed = false;
 
 // camera
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
@@ -68,10 +80,13 @@ int main(void) {
 
   // configure global opengl state
   glEnable(GL_DEPTH_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   // build and compile shaders
   Shader shader("shaders/anti_aliasing.vs", "shaders/anti_aliasing.fs");
   Shader screenShader("shaders/aa_post.vs", "shaders/aa_post.fs");
+  // TODO: edit shaders to handle gamma correction
 
   // set up vertex data and configure vertex attrib
   float cubeVertices[] = {
@@ -119,6 +134,17 @@ int main(void) {
     -0.5f,  0.5f, -0.5f
   };
 
+  float planeVertices[] = {
+    // positions            // normals         // texcoords
+     10.0f, -0.5f,  10.0f,  0.0f, 1.0f, 0.0f,  10.0f,  0.0f,
+    -10.0f, -0.5f,  10.0f,  0.0f, 1.0f, 0.0f,   0.0f,  0.0f,
+    -10.0f, -0.5f, -10.0f,  0.0f, 1.0f, 0.0f,   0.0f, 10.0f,
+
+     10.0f, -0.5f,  10.0f,  0.0f, 1.0f, 0.0f,  10.0f,  0.0f,
+    -10.0f, -0.5f, -10.0f,  0.0f, 1.0f, 0.0f,   0.0f, 10.0f,
+     10.0f, -0.5f, -10.0f,  0.0f, 1.0f, 0.0f,  10.0f, 10.0f
+  };
+
   float quadVertices[] = {
     // positions   // texCoords
     -1.0f,  1.0f,  0.0f, 1.0f,
@@ -141,6 +167,31 @@ int main(void) {
   
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+  // set plane VAO
+  unsigned int planeVAO, planeVBO;
+  glGenVertexArrays(1, &planeVAO);
+  glGenBuffers(1, &planeVBO);
+  
+  glBindVertexArray(planeVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, planeVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(planeVertices), planeVertices, GL_STATIC_DRAW);
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+  glBindVertexArray(0);
+
+  // load floor textures
+  unsigned int floorTexture = loadTexture("resources/wood.png", false);
+  unsigned int floorTextureGammaCorrected = loadTexture("resources/wood.png", true);
+
+  // TODO: shader configuration for floor texture
+  // shader.use();
+  // shader.setInt("floorTexture", 0);
 
   // set screen VAO
   unsigned int quadVAO, quadVBO;
@@ -203,6 +254,20 @@ int main(void) {
   screenShader.use();
   screenShader.setInt("screenTexture", 0);
 
+  // lighting info
+  glm::vec3 lightPositions[] = {
+    glm::vec3(-3.0f, 0.0f, 0.0f),
+    glm::vec3(-1.0f, 0.0f, 0.0f),
+    glm::vec3 (1.0f, 0.0f, 0.0f),
+    glm::vec3 (3.0f, 0.0f, 0.0f)
+  };
+  glm::vec3 lightColors[] = {
+    glm::vec3(0.25),
+    glm::vec3(0.50),
+    glm::vec3(0.75),
+    glm::vec3(1.00)
+  };
+
   // render loop
   while(!glfwWindowShouldClose(window)) {
     // per-frame time logic
@@ -229,6 +294,21 @@ int main(void) {
     shader.setMat4("projection", projection);
     shader.setMat4("view", camera.GetViewMatrix());
     shader.setMat4("model", glm::mat4(1.0f));
+
+    // TODO: set light uniforms -------
+    glUniform3fv(glGetUniformLocation(shader.ID, "lightPositions"), 4, &lightPositions[0][0]);
+    glUniform3fv(glGetUniformLocation(shader.ID, "lightColors"), 4, &lightColors[0][0]);
+    shader.setVec3("viewPos", camera.Position);
+    shader.setInt("gamma", gammaEnabled);
+    // --------------------------------
+    
+    // TODO: draw floor
+    glBindVertexArray(planeVAO);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gammaEnabled ? floorTextureGammaCorrected : floorTexture);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    std::cout << (gammaEnabled ? "Gamma enabled" : "Gamma disabled") << std::endl;
 
     glBindVertexArray(cubeVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -271,6 +351,14 @@ void processInput(GLFWwindow *window) {
     camera.ProcessKeyboard(LEFT, deltaTime);
   if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
     camera.ProcessKeyboard(RIGHT, deltaTime);
+
+  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !gammaKeyPressed) {
+    gammaEnabled = !gammaEnabled;
+    gammaKeyPressed = true;
+  }
+  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
+    gammaKeyPressed = false;
+  }
 }
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height) { 
@@ -297,4 +385,55 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
 
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
   camera.ProcessMouseScroll(static_cast<float>(yoffset));
+}
+
+unsigned int loadTexture(const std::string& textureName, bool gammaCorrection) {
+  // check if texture has already been loaded
+  auto it = std::find_if(textures.begin(), textures.end(), [textureName](const TextureInfo& texture) {
+    return texture.name == textureName;
+  });
+  if (it != textures.end()) {
+    std::cout << "Found texture: " << it->name << ", ID: " << it->id << "\n";
+    return it->id;
+  } else {
+    std::cout << "Loading new texture with name " << textureName << "\n";
+  }
+
+  unsigned int textureID;
+  glGenTextures(1, &textureID);
+
+  // load texture data and generate mipmaps
+  int width, height, nrComponents;
+  stbi_set_flip_vertically_on_load(true);
+  std::string texturePath = "assets/textures/" + textureName;
+  unsigned char *data = stbi_load(texturePath.c_str(), &width, &height, &nrComponents, 0);
+  if (data) {
+    GLenum internalFormat = GL_NONE;
+    GLenum dataFormat = GL_NONE;
+    if (nrComponents == 1) {
+      internalFormat = dataFormat = GL_RED;
+    } else if (nrComponents == 3) {
+      internalFormat = gammaCorrection ? GL_SRGB : GL_RGB;
+      dataFormat = GL_RGB;
+    } else if (nrComponents == 4) {
+      internalFormat = gammaCorrection ? GL_SRGB_ALPHA : GL_RGBA;
+      dataFormat = GL_RGBA;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  } else {
+    std::cout << "Failed to load texture: " << textureName << std::endl;
+  }
+
+  stbi_image_free(data);
+  textures.push_back({textureName, textureID}); // store new texture info
+  
+  return textureID;
 }
