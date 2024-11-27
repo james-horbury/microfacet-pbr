@@ -10,7 +10,7 @@ in VS_OUT {
 uniform sampler2D floorTexture;
 
 uniform vec3 lightPositions[4];
-uniform vec3 lightColor[4];
+uniform vec3 lightColors[4];
 uniform vec3 viewPos;
 uniform bool gamma;
 
@@ -22,7 +22,7 @@ vec3 BlinnPhong(vec3 normal, vec3 fragPos, vec3 lightPos, vec3 lightColor) {
 
   // specular
   vec3 viewDir = normalize(viewPos - fragPos);
-  vec3 reflectDir = reflectDir = reflect(-lightDir, normal);
+  vec3 reflectDir = reflect(-lightDir, normal);
   float spec = 0.0;
   vec3 halfwayDir = normalize(lightDir + viewDir);
   spec = pow(max(dot(normal, halfwayDir), 0.0), 64.0);
